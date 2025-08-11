@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sunlight Planner · Pro+++ Moon+Tracks（Amap/OSM + 搜索 + 日/月 + 轨迹 + 主体高度）</title>
+
+<link rel="stylesheet" href="https://cdn.staticfile.org/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+  html, body { height:100%; margin:0; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,PingFang SC,Hiragino Sans GB,Microsoft YaHei,sans-serif;}
+  #app { display:grid; grid-template-columns:460px 1fr; height:100%; }
+  #sidebar{ padding:14px; border-right:1px solid #eee; overflow:auto; background:#fff;}
+  #map{ height:100%; background:#f7f7f7; }
+  .panel{ background:#fff; border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:12px; box-shadow:0 1px 4px rgba(0,0,0,.04);}
+  .panel h3{ margin:0 0 8px; font-size:16px;}
+  .small{ font-size:12px; color:#444;}
+  .muted{ color:#666; }
+  .hr{ height:1px; background:#eee; margin:10px 0;}
+  label{ display:block; margin:6px 0;}
+  input[type="date"],input[type="number"], input[type="text"]{ width:100%; padding:8px; border:1px solid #ddd; border-radius:8px;}
+  .row{ display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .row3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+  .btn{ display:inline-flex; padding:8px 10px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer; }
+  .btn:active{ transform: translateY(1px);}
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; }
+  .chip{ font-size:12px; padding:2px 6px; background:#f6f6f6; border:1px solid #eee; border-radius:999px; }
+  .legend{ display:flex; gap:10px; flex-wrap:wrap; font-size:12px; align-items:center;}
+  .legend span::before{ content:""; display:inline-block; width:10px; height:10px; margin-right:6px; border-radius:2px; vertical-align:-1px;}
+  .m::before{ background:#0078ff;} .e::before{ background:#ff6a00;} .axis::before{ background:#999;} .fov::before{ background:#ff6a00;} .moon::before{ background:#9c27b0;}
+  .label { background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:999px; padding:2px 8px; font-size:12px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,.1); }
+  .badge{ display:inline-block; padding:2px 6px; border-radius:999px; border:1px solid #ddd; font-size:12px; }
+  .toast{position:fixed; right:12px; top:12px; z-index:9999; background:#ecfeff; border:1px solid #a5f3fc; padding:8px 10px; border-radius:10px; font-size:12px; display:none;}
+  .kpi{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .kpi div{ background:#fafafa; border:1px dashed #eee; border-radius:10px; padding:8px; }
+  .wx-cards{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+  .card{ border:1px solid #eee; border-radius:12px; padding:8px; text-align:center; background:#fff;}
+  .card .d{ font-weight:600; margin-bottom:4px;}
+  .card .ico{ font-size:20px; }
+  .card .t{ font-size:12px; color:#555;}
+  .strip{ display:flex; gap:8px; overflow:auto; padding-bottom:6px; }
+  .pill{ min-width:56px; border:1px solid #eee; border-radius:10px; padding:6px; text-align:center; background:#fff; }
+  .score{ display:flex; gap:10px; }
+  .s{ flex:1; background:#f9fafb; border:1px solid #eee; border-radius:12px; padding:8px; }
+  .s .bar{ height:8px; border-radius:8px; background:linear-gradient(90deg,#ddd,#4ade80); margin-top:6px; position:relative; }
+  .s .bar .v{ position:absolute; top:-4px; width:2px; height:16px; background:#111; left:0; }
+
+  .insp-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .insp-grid a{ display:block; border-radius:10px; overflow:hidden; border:1px solid #eee; }
+  .insp-grid img{ width:100%; height:100px; object-fit:cover; display:block; }
+
+  .srch{ display:grid; grid-template-columns:1fr auto; gap:6px; }
+  .sr{ background:#fff; border:1px solid #eee; border-radius:10px; margin-top:8px; }
+  .sr a{ display:block; padding:8px 10px; border-top:1px solid #f1f1f1; text-decoration:none; color:#111;}
+  .sr a:hover{ background:#f9fafb; }
+</style>
+</head>
+<body>
+<div class="toast" id="toast">初始化…</div>
+
+<div id="app">
+  <aside id="sidebar">
+    <div class="panel">
+      <h3>地图 · Amap/OSM + 搜索 + 日/月 + 轨迹</h3>
+      <div class="hr"></div>
+
+      <label>搜索位置
+        <div class="srch">
+          <input type="text" id="searchInput" placeholder="输入地名/POI，例如：雷峰塔 / 外滩 / 鸟巢" />
+          <button class="btn" id="searchBtn">搜索</button>
+        </div>
+        <div class="small muted" style="margin-top:4px;">可选：<span id="amapKeyArea"></span></div>
+        <div class="sr" id="searchResults" style="display:none;"></div>
+      </label>
+
+      <div class="row" style="margin-top:8px;">
+        <label>日期 <input type="date" id="datePicker"></label>
+        <div style="display:flex; gap:6px; align-items:flex-end;">
+          <button class="btn" id="prevDay">← 前一天</button>
+          <button class="btn" id="todayBtn">今天</button>
+          <button class="btn" id="nextDay">后一天 →</button>
+        </div>
+      </div>
+
+      <div class="row3">
+        <label>充光仰角（°）<input type="number" id="altTarget" min="1" max="30" step="0.5" value="8"></label>
+        <label>可视距离（米）<input type="number" id="vizDist" min="50" max="5000" step="50" value="600"></label>
+        <label>主体高度（米）<input type="number" id="subjH" min="0" max="1000" step="1" value="0"></label>
+      </div>
+      <div class="small muted">若填写“主体高度”，将用 <b>arctan(高度/距离)</b> 自动计算推荐仰角；否则采用上面的“充光仰角”。</div>
+
+      <div class="row">
+        <label>叠加层 <div class="chips">
+          <span class="chip"><input type="checkbox" id="chkPlaceLabels" checked> 地名</span>
+        </div></label>
+        <label>角度显示 <div class="chips">
+          <span class="chip"><input type="checkbox" id="chkMorning" checked> 晨线</span>
+          <span class="chip"><input type="checkbox" id="chkEvening" checked> 暮线</span>
+          <span class="chip"><input type="checkbox" id="chkMoon" checked> 月线</span>
+          <span class="chip"><input type="checkbox" id="chkText" checked> 角度文字</span>
+          <span class="chip"><input type="checkbox" id="chkFOV" checked> FOV 三角（仅正面）</span>
+          <span class="chip"><input type="checkbox" id="chkTracks" checked> 行动轨迹线</span>
+        </div></label>
+      </div>
+
+      <div style="display:flex; gap:6px; align-items:center;">
+        <button class="btn" id="btnLocate">用我当前位置</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>拍摄角度（已在地图标注）</h3>
+      <div class="legend"><span class="m">晨线</span><span class="e">暮线</span><span class="moon">月线</span><span class="fov">FOV 三角（仅正面）</span><span class="axis">方位轴</span></div>
+      <div class="hr"></div>
+      <div id="anglesList" class="small">点击地图或使用上方搜索定位。</div>
+    </div>
+
+    <details open class="panel">
+      <summary><b>天气（±7天卡片 & 当天小时带）+ 霞光预测</b> <span class="small muted">（联网）</span></summary>
+      <div class="kpi" style="margin-top:8px;">
+        <div><div class="muted small">坐标</div><div id="coord" style="font-family:ui-monospace"></div></div>
+        <div><div class="muted small">所选日</div><div id="dateLabel" style="font-family:ui-monospace"></div></div>
+      </div>
+      <div class="hr"></div>
+      <div class="score">
+        <div class="s">
+          <div>晨拍指数 <b id="scoreM">--</b>/100</div>
+          <div class="bar"><div class="v" id="scoreMBar"></div></div>
+          <div class="small" id="tipM"></div>
+        </div>
+        <div class="s">
+          <div>暮拍指数 <b id="scoreE">--</b>/100</div>
+          <div class="bar"><div class="v" id="scoreEBar"></div></></div>
+          <div class="small" id="tipE"></div>
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div class="wx-cards" id="dailyCards"></div>
+      <div class="hr"></div>
+      <div class="strip" id="hourStrip"></div>
+    </details>
+
+    <details class="panel">
+      <summary><b>构图灵感（附近作品 · Wikimedia Commons）</b></summary>
+      <div class="hr"></div>
+      <div class="insp-grid" id="inspGrid"></div>
+      <div class="hr"></div>
+      <div id="searchLinks" class="small"></div>
+    </details>
+  </aside>
+
+  <div id="map"></div>
+</div>
+
+<script>
+(function(){
+  function loadScript(urls, cb){
+    let i=0; let lastErr='';
+    (function next(){
+      if(i>=urls.length){ cb(new Error(lastErr||'all failed')); return; }
+      const u = urls[i++];
+      const s=document.createElement('script'); s.src=u; s.async=false;
+      s.onload=()=>cb(); s.onerror=()=>{ lastErr = '加载失败：'+u; next(); };
+      document.head.appendChild(s);
+    })();
+  }
+  function loadAll(list, cb){ (function step(i=0){ if(i>=list.length) return cb(); loadScript(list[i], ()=>step(i+1)); })(); }
+
+  const LEAFLET = [
+    "https://cdn.staticfile.org/leaflet/1.9.4/leaflet.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js",
+    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+    "https://fastly.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+  ];
+  const SUNCALC = [
+    "https://cdn.staticfile.org/suncalc/1.9.0/suncalc.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js",
+    "https://unpkg.com/suncalc@1.9.0/suncalc.js",
+    "https://fastly.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"
+  ];
+  loadAll([LEAFLET, SUNCALC], function(){ main(); });
+})();
+</script>
+
+<script>
+function main(){
+  const toast = document.getElementById('toast');
+  function showToast(msg){ toast.textContent=msg; toast.style.display='block'; setTimeout(()=>toast.style.display='none', 2600); }
+  showToast('地图已启动');
+
+  const rad2deg = r=>r*180/Math.PI, deg2rad=d=>d*Math.PI/180;
+  const fmtDeg=x=>(Math.round(x*10)/10).toFixed(1)+'°';
+  const fmtTime=d=>{const p=n=>n<10?('0'+n):n; return `${p(d.getHours())}:${p(d.getMinutes())}`;};
+  const fmtUTC=d=>{const p=n=>n<10?('0'+n):n; return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`; };
+  const brgName=b=>["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(b/22.5)%16];
+
+  function dest(lat, lon, brg, meters){
+    const R=6371000, δ=meters/R, θ=deg2rad(brg), φ1=deg2rad(lat), λ1=deg2rad(lon);
+    const sinφ1=Math.sin(φ1), cosφ1=Math.cos(φ1); const sinδ=Math.sin(δ), cosδ=Math.cos(δ);
+    const sinφ2 = sinφ1*cosδ + cosφ1*sinδ*Math.cos(θ);
+    const φ2=Math.asin(Math.max(-1,Math.min(1,sinφ2)));
+    const y=Math.sin(θ)*sinδ*cosφ1, x=cosδ - sinφ1*sinφ2;
+    const λ2=λ1 + Math.atan2(y,x);
+    return { lat: rad2deg(φ2), lon: ((rad2deg(λ2)+540)%360)-180 };
+  }
+
+  // --- Map base ---
+  const map = L.map('map',{ worldCopyJump:true, zoomControl:true }).setView([30.25,120.16], 14);
+  const gaodeVec = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',{ subdomains:'1234', maxZoom:18, attribution:'&copy; Amap' });
+  const gaodeSat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',{ subdomains:'1234', maxZoom:18, attribution:'&copy; Amap' });
+  const gaodeLab = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}',{ subdomains:'1234', maxZoom:18, attribution:'' });
+  const amapImg = L.layerGroup([gaodeSat, gaodeLab]).addTo(map);
+
+  const osmStd = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ maxZoom:19, attribution:'&copy; OSM' });
+  const cartoNoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',{ maxZoom:19, attribution:'&copy; OSM & CARTO' });
+  const cartoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',{ maxZoom:19, attribution:'&copy; OSM & CARTO' });
+
+  L.control.layers({ "高德矢量": gaodeVec, "高德影像": amapImg, "OSM 地图": osmStd, "OSM 无字版": cartoNoLabels }, { "OSM 地名": cartoLabels, "Amap 标注": gaodeLab }, { collapsed:true }).addTo(map);
+
+  let err=0; gaodeSat.on('tileerror', ()=>{ if(++err>3 && !osmStd._map){ osmStd.addTo(map); showToast('高德瓦片异常，已自动切换到 OSM'); } });
+
+  // --- UI refs ---
+  const dp = document.getElementById('datePicker'), altI=document.getElementById('altTarget'), distI=document.getElementById('vizDist');
+  const subjH=document.getElementById('subjH');
+  const chkM=document.getElementById('chkMorning'), chkE=document.getElementById('chkEvening'), chkMoon=document.getElementById('chkMoon');
+  const chkT=document.getElementById('chkText'), chkF=document.getElementById('chkFOV'), chkTracks=document.getElementById('chkTracks');
+  const anglesList=document.getElementById('anglesList');
+  const coordEl=document.getElementById('coord'), dateLabelEl=document.getElementById('dateLabel');
+  const t=new Date(); const yyyy=t.getFullYear(), mm=('0'+(t.getMonth()+1)).slice(-2), dd=('0'+t.getDate()).slice(-2);
+  dp.value = `${yyyy}-${mm}-${dd}`; dateLabelEl.textContent = dp.value;
+
+  // place labels switch
+  const chkPlace=document.getElementById('chkPlaceLabels');
+  function getBaseName(){
+    const radios=document.querySelectorAll('.leaflet-control-layers-base input[type=radio]');
+    for(const r of radios){ if(r.checked){ return r.closest('label').textContent.trim(); } } return '';
+  }
+  function syncPlace(){
+    const base=getBaseName();
+    if(base.startsWith('高德')){ if(chkPlace.checked){ if(!map.hasLayer(gaodeLab)) gaodeLab.addTo(map); } else { map.removeLayer(gaodeLab);} map.removeLayer(cartoLabels); }
+    else{ if(chkPlace.checked){ cartoLabels.addTo(map); } else { map.removeLayer(cartoLabels);} map.removeLayer(gaodeLab); }
+  }
+  chkPlace.addEventListener('change', syncPlace);
+  map.on('baselayerchange', syncPlace); syncPlace();
+
+  // drawing helpers
+  let marker=null, drawings=[], nsAxis=null, ewAxis=null;
+  function addDrawing(l){ drawings.push(l); return l.addTo(map); }
+  function clearDrawings(){ drawings.forEach(l=>map.removeLayer(l)); drawings=[]; if(nsAxis) map.removeLayer(nsAxis); if(ewAxis) map.removeLayer(ewAxis); }
+  function axes(lat,lon,meters){
+    const n=dest(lat,lon,0,meters), s=dest(lat,lon,180,meters), e=dest(lat,lon,90,meters), w=dest(lat,lon,270,meters);
+    nsAxis=L.polyline([[n.lat,n.lon],[lat,lon],[s.lat,s.lon]],{color:'#999',weight:1,dashArray:'4,4'}).addTo(map);
+    ewAxis=L.polyline([[w.lat,w.lon],[lat,lon],[e.lat,e.lon]],{color:'#999',weight:1,dashArray:'4,4'}).addTo(map);
+  }
+  function drawRayLabeled(lat,lon,brg,meters,color,text,timeStr){
+    const mid = dest(lat,lon,brg,meters*0.55);
+    const end = dest(lat,lon,brg,meters);
+    addDrawing(L.polyline([[lat,lon],[end.lat,end.lon]],{ color:color, weight:3 }));
+    if(chkT.checked){
+      addDrawing(L.marker([mid.lat, mid.lon], { icon: L.divIcon({ className:'', html:`<span class="label">${text} · ${fmtDeg(brg)}（${brgName(brg)}） · ${timeStr}</span>` }) }));
+    }
+  }
+  function drawFOVTriangle(lat,lon,brg,meters,half=15,color){
+    const Lp=dest(lat,lon,(brg-half+360)%360,meters);
+    const Rp=dest(lat,lon,(brg+half)%360,meters);
+    const poly = L.polygon([[lat,lon],[Lp.lat,Lp.lon],[Rp.lat,Rp.lon]],{ color:color, weight:1, fillColor:color, fillOpacity:0.12 });
+    addDrawing(poly);
+  }
+  function drawTrack(lat,lon,start,minutes,color,meters){
+    if(!chkTracks.checked) return;
+    const pts=[]; for(let m=-minutes; m<=minutes; m+=6){ const t=new Date(start.getTime()+m*60000);
+      const sun=SunCalc.getPosition(t,lat,lon); const brg=(rad2deg(sun.azimuth)+180)%360;
+      const p=dest(lat,lon,brg,meters); pts.append?pts.append([p.lat,p.lon]):pts.push([p.lat,p.lon]); }
+    addDrawing(L.polyline(pts,{color:color, weight:1, dashArray:'6,4', opacity:0.9}));
+  }
+  const r2d = r=>r*180/Math.PI;
+  const bearingFromAz = az => (r2d(az)+180)%360;
+  function inRange(a,b){ return a && b && !isNaN(a) && !isNaN(b) && a<b; }
+  function bisectTime(getAlt, a, b, targetDeg){
+    if(!inRange(a,b)) return null;
+    const f=t=>getAlt(t)-targetDeg;
+    let fa=f(a), fb=f(b);
+    if(isNaN(fa)||isNaN(fb)) return null;
+    if(fa*fb>0) return Math.abs(fa)<Math.abs(fb)?a:b;
+    for(let i=0;i<40;i++){const m=new Date((a.getTime()+b.getTime())/2); const fm=f(m); if(Math.abs(fm)<0.01) return m; if(fa*fm<=0){b=m; fb=fm}else{a=m; fa=fm}}
+    return new Date((a.getTime()+b.getTime())/2);
+  }
+  function compute(lat,lon){
+    const picked=new Date(dp.value+'T12:00:00'); dateLabelEl.textContent = dp.value;
+    const times=SunCalc.getTimes(picked,lat,lon);
+    const mtimes=SunCalc.getMoonTimes(picked,lat,lon);
+    const meters=parseFloat(distI.value)||600;
+    let target=parseFloat(altI.value)||8;
+    const H=parseFloat(subjH.value)||0;
+    if(H>0){ target = Math.max(2, Math.min(30, r2d(Math.atan(H / meters)))); } // 推荐仰角
+    function sunAlt(t){ return r2d(SunCalc.getPosition(t,lat,lon).altitude); }
+    function moonAlt(t){ return r2d(SunCalc.getMoonPosition(t,lat,lon).altitude); }
+
+    const tM=bisectTime(sunAlt, times.sunrise, times.goldenHourEnd, target);
+    const tE=bisectTime(sunAlt, times.goldenHour, times.sunset, target);
+    const pM=tM && SunCalc.getPosition(tM,lat,lon), pE=tE && SunCalc.getPosition(tE,lat,lon);
+    const azM=pM?bearingFromAz(pM.azimuth):null, azE=pE?bearingFromAz(pE.azimuth):null;
+    const altM=pM?r2d(pM.altitude):null, altE=pE?r2d(pE.altitude):null;
+
+    let tMR=null,tMS=null, azMR=null,azMS=null, altMR=null,altMS=null;
+    if(mtimes && (mtimes.rise || mtimes.set)){
+      if(mtimes.rise){ const rEnd=new Date(mtimes.rise.getTime()+3*3600*1000); tMR=bisectTime(moonAlt, mtimes.rise, rEnd, target); const m=tMR?SunCalc.getMoonPosition(tMR,lat,lon):null; azMR=m?bearingFromAz(m.azimuth):null; altMR=m?r2d(m.altitude):null; }
+      if(mtimes.set){ const sBeg=new Date(mtimes.set.getTime()-3*3600*1000); tMS=bisectTime(moonAlt, sBeg, mtimes.set, target); const m=tMS?SunCalc.getMoonPosition(tMS,lat,lon):null; azMS=m?bearingFromAz(m.azimuth):null; altMS=m?r2d(m.altitude):null; }
+    }
+    return { times, mtimes, meters, target, tM,tE, azM,azE, altM,altE, tMR,tMS, azMR,azMS, altMR,altMS };
+  }
+  function render(lat,lon){
+    clearDrawings();
+    const D = compute(lat,lon);
+    axes(lat,lon,D.meters);
+
+    // Sun
+    if(chkM.checked && D.azM!==null){
+      drawRayLabeled(lat,lon,D.azM,D.meters,'#0078ff','晨·正面充光',fmtTime(D.tM));
+      drawRayLabeled(lat,lon,(D.azM+90)%360,D.meters,'#0078ff','晨·侧光',fmtTime(D.tM));
+      drawRayLabeled(lat,lon,(D.azM+180)%360,D.meters,'#0078ff','晨·背光轮廓',fmtTime(D.tM));
+      if(chkF.checked){ drawFOVTriangle(lat,lon,D.azM,D.meters,15,'#0078ff'); }
+      if(chkTracks.checked) drawTrack(lat,lon,D.tM,60,'#0078ff',D.meters);
+    }
+    if(chkE.checked && D.azE!==null){
+      drawRayLabeled(lat,lon,D.azE,D.meters,'#ff6a00','暮·正面充光',fmtTime(D.tE));
+      drawRayLabeled(lat,lon,(D.azE+90)%360,D.meters,'#ff6a00','暮·侧光',fmtTime(D.tE));
+      drawRayLabeled(lat,lon,(D.azE+180)%360,D.meters,'#ff6a00','暮·背光轮廓',fmtTime(D.tE));
+      if(chkF.checked){ drawFOVTriangle(lat,lon,D.azE,D.meters,15,'#ff6a00'); }
+      if(chkTracks.checked) drawTrack(lat,lon,D.tE,60,'#ff6a00',D.meters);
+    }
+    // Moon
+    const moonColor='#9c27b0';
+    if(chkMoon.checked){
+      if(D.azMR!==null){
+        drawRayLabeled(lat,lon,D.azMR,D.meters,moonColor,'月升·正面充光',fmtTime(D.tMR));
+        if(chkF.checked){ drawFOVTriangle(lat,lon,D.azMR,D.meters,12,moonColor); }
+        if(chkTracks.checked) drawTrack(lat,lon,D.tMR,60,moonColor,D.meters);
+      }
+      if(D.azMS!==null){
+        drawRayLabeled(lat,lon,D.azMS,D.meters,moonColor,'月落·正面充光',fmtTime(D.tMS));
+        if(chkF.checked){ drawFOVTriangle(lat,lon,D.azMS,D.meters,12,moonColor); }
+        if(chkTracks.checked) drawTrack(lat,lon,D.tMS,60,moonColor,D.meters);
+      }
+    }
+
+    // 推荐语
+    function row(lbl, brg, time, alt, color, tag=''){
+      if(brg==null || !time) return '';
+      const badge = `<span class="badge" style="border-color:${color};">${lbl}${tag?(' · '+tag):''}</span>`;
+      return `<div style="margin:6px 0">${badge} · <b>${fmtDeg(brg)}</b>（${brgName(brg)}） <span class="muted">建议 ${fmtTime(time)}（${fmtUTC(time)}） · 光高 ${fmtDeg(alt||D.target)}</span></div>`;
+    }
+    let html='';
+    html += row('晨·正面充光', D.azM, D.tM, D.altM, '#0078ff', '推荐');
+    html += row('暮·正面充光', D.azE, D.tE, D.altE, '#ff6a00', '推荐');
+    html += row('月升·正面充光', D.azMR, D.tMR, D.altMR, '#9c27b0');
+    html += row('月落·正面充光', D.azMS, D.tMS, D.altMS, '#9c27b0');
+    html += `<div class="hr"></div><div class="small">采用仰角：<b>${fmtDeg(D.target)}</b>（${(parseFloat(subjH.value)||0)>0?'由主体高度推算':'用户设定'}）；已绘制行动轨迹线（±60 分钟）。</div>`;
+    anglesList.innerHTML=html;
+  }
+
+  function ymd(d){ return d.toISOString().slice(0,10); }
+  document.getElementById('prevDay').addEventListener('click', ()=>{ const d=new Date(dp.value); d.setDate(d.getDate()-1); dp.value=ymd(d); if(marker){ const {lat,lng}=marker.getLatLng(); render(lat,lng); loadWeather(lat,lng);} });
+  document.getElementById('nextDay').addEventListener('click', ()=>{ const d=new Date(dp.value); d.setDate(d.getDate()+1); dp.value=ymd(d); if(marker){ const {lat,lng}=marker.getLatLng(); render(lat,lng); loadWeather(lat,lng);} });
+  document.getElementById('todayBtn').addEventListener('click', ()=>{ const d=new Date(); dp.value=ymd(d); if(marker){ const {lat,lng}=marker.getLatLng(); render(lat,lng); loadWeather(lat,lng);} });
+  [dp, altI, distI, subjH, chkM, chkE, chkMoon, chkT, chkF, chkTracks].forEach(el=> el.addEventListener('change', ()=> marker && render(marker.getLatLng().lat, marker.getLatLng().lng)));
+
+  function pickAndRender(lat,lng){ map.setView([lat,lng], 16); if(marker) map.removeLayer(marker); marker=L.marker([lat,lng]).addTo(map); render(lat,lng); loadWeather(lat,lng); loadInspiration(lat,lng); }
+  map.on('click', e=>{ const {lat,lng}=e.latlng; pickAndRender(lat,lng); });
+
+  document.getElementById('btnLocate').addEventListener('click', ()=>{
+    if(!navigator.geolocation) return alert('浏览器不支持定位');
+    navigator.geolocation.getCurrentPosition(p=>{ pickAndRender(p.coords.latitude, p.coords.longitude); }, err=>alert('定位失败：'+err.message), { enableHighAccuracy:true, timeout:10000 });
+  });
+
+  // --- 搜索 ---
+  const searchInput=document.getElementById('searchInput');
+  const searchBtn=document.getElementById('searchBtn');
+  const searchResults=document.getElementById('searchResults');
+  const amapArea=document.getElementById('amapKeyArea');
+  amapArea.innerHTML='高德Key（可选）：<input id="amapKey" placeholder="如果你有 Key，可填" style="width:200px; padding:4px 6px; border:1px solid #ddd; border-radius:8px;">';
+  function rsList(items){
+    if(!items || !items.length){ searchResults.style.display='none'; searchResults.innerHTML=''; return; }
+    searchResults.innerHTML=''; searchResults.style.display='block';
+    items.slice(0,8).forEach(it=>{
+      const a=document.createElement('a'); a.href='javascript:void(0)';
+      a.textContent = it.name || it.display_name || (it.lat+','+it.lon);
+      a.onclick=()=>{ searchResults.style.display='none'; pickAndRender(parseFloat(it.lat), parseFloat(it.lon)); };
+      searchResults.appendChild(a);
+    });
+  }
+  async function geocode(q){
+    q=q.trim(); if(!q) return;
+    try{
+      const u=new URL('https://nominatim.openstreetmap.org/search'); u.searchParams.set('format','jsonv2'); u.searchParams.set('limit','8'); u.searchParams.set('q',q);
+      const r=await fetch(u.toString(),{headers:{'Accept':'application/json'}}); if(r.ok){ const j=await r.json(); if(j && j.length){ rsList(j); return; } }
+    }catch(e){}
+    try{
+      const u=new URL('https://geocode.maps.co/search'); u.searchParams.set('q',q);
+      const r=await fetch(u.toString()); if(r.ok){ const j=await r.json(); if(j && j.length){ rsList(j); return; } }
+    }catch(e){}
+    try{
+      const k=document.getElementById('amapKey').value.trim();
+      if(k){
+        const u=new URL('https://restapi.amap.com/v3/geocode/geo'); u.searchParams.set('key',k); u.searchParams.set('address',q);
+        const r=await fetch(u.toString()); const j=await r.json();
+        if(j && j.status=='1' && j.geocodes && j.geocodes.length){
+          const items = j.geocodes.map(g=>{ const [lon,lat]=g.location.split(','); return { name: g.formatted_address, lat, lon }; });
+          rsList(items); return;
+        }
+      }
+    }catch(e){}
+    rsList([]); alert('没有找到相关位置，换个关键词试试。');
+  }
+  searchBtn.addEventListener('click', ()=>geocode(searchInput.value));
+  searchInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ geocode(searchInput.value); } });
+
+  // 天气 + 霞光预测（沿用上一版 Open-Meteo）
+  function weatherIcon(code){
+    const m = {0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌦️',56:'🌧️',57:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',71:'🌨️',73:'🌨️',75:'🌨️',77:'❄️',80:'🌧️',81:'🌧️',82:'⛈️',85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️'};
+    return m[code] || '☁️';
+  }
+  function dowStr(d){ return '周' + ['日','一','二','三','四','五','六'][new Date(d).getDay()]; }
+
+  async function loadWeather(lat,lon){
+    coordEl.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+    const picked=new Date(dp.value+'T12:00:00');
+    const url = new URL("https://api.open-meteo.com/v1/forecast");
+    url.searchParams.set("latitude", lat);
+    url.searchParams.set("longitude", lon);
+    url.searchParams.set("timezone", "auto");
+    url.searchParams.set("hourly", "temperature_2m,cloudcover,cloudcover_low,cloudcover_mid,cloudcover_high,wind_speed_10m,precipitation_probability");
+    url.searchParams.set("daily", "sunrise,sunset,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weathercode");
+    url.searchParams.set("start_date", new Date(picked.getTime()-7*86400000).toISOString().slice(0,10));
+    url.searchParams.set("end_date",   new Date(picked.getTime()+7*86400000).toISOString().slice(0,10));
+    try{
+      const res = await fetch(url.toString()); const j = await res.json();
+      const H=j.hourly || {}, D=j.daily || {};
+      const hTimes=H.time||[], hTemp=H.temperature_2m||[], hCloud=H.cloudcover||[], hCL=H.cloudcover_low||[], hCM=H.cloudcover_mid||[], hCH=H.cloudcover_high||[], hPP=H.precipitation_probability||[], hWS=H.wind_speed_10m||[];
+      const idxMap=new Map(hTimes.map((t,i)=>[t,i]));
+      function nearestIdx(iso){ if(idxMap.has(iso)) return idxMap.get(iso); let best=0, bd=1e12; const x=new Date(iso).getTime(); for(let i=0;i<hTimes.length;i++){ const d=Math.abs(new Date(hTimes[i]).getTime()-x); if(d<bd){bd=d; best=i;} } return best; }
+
+      const dailyCards=document.getElementById('dailyCards'); dailyCards.innerHTML='';
+      if(!D.time){ dailyCards.innerHTML='<div class="small muted">天气数据不可用</div>'; return; }
+      for(let i=0;i<D.time.length;i++){
+        const day=D.time[i], ico=weatherIcon(D.weathercode?D.weathercode[i]:3);
+        const hi=D.temperature_2m_max?Math.round(D.temperature_2m_max[i]):'-';
+        const lo=D.temperature_2m_min?Math.round(D.temperature_2m_min[i]):'-';
+        const pp=D.precipitation_probability_max?D.precipitation_probability_max[i]:null;
+        const el=document.createElement('div'); el.className='card';
+        el.innerHTML=`<div class="d">${day===dp.value?'今天':dowStr(day)}</div>
+          <div class="ico">${ico}</div>
+          <div class="t">${hi}° / ${lo}°</div>
+          <div class="small muted">${pp!=null?('降水概率 '+pp+'%'):'&nbsp;'}</div>`;
+        el.onclick=()=>{ dp.value=day; if(marker){ const {lat,lng}=marker.getLatLng(); render(lat,lng); loadWeather(lat,lng);} };
+        dailyCards.appendChild(el);
+      }
+
+      const hourStrip=document.getElementById('hourStrip'); hourStrip.innerHTML='';
+      const dayISO = dp.value;
+      for(let h=0; h<24; h++){
+        const iso = dayISO + 'T' + String(h).padStart(2,'0') + ':00';
+        const k = nearestIdx(iso);
+        const p=document.createElement('div'); p.className='pill';
+        const wcode = (hPP[k]||0)>=70 ? 80 : ((hCloud[k]||0)>60?3:((hCloud[k]||0)>20?2:1));
+        p.innerHTML=`<div class="h">${String(h).padStart(2,'0')}:00</div>
+          <div class="ico">${weatherIcon(wcode)}</div>
+          <div class="tp">${Math.round(hTemp[k]||0)}°C</div>`;
+        hourStrip.appendChild(p);
+      }
+
+      function avgAround(iso, arr){ const k=nearestIdx(iso); let sum=0,n=0; for(let i=k-1;i<=k+1;i++){ if(arr[i]!=null){ sum+=arr[i]; n++; } } return n?sum/n:null; }
+      function scoreFor(iso){
+        const total=avgAround(iso, hCloud)||0, high=avgAround(iso, hCH)||0, low=avgAround(iso, hCL)||0, rain=avgAround(iso, hPP)||0, wind=avgAround(iso, hWS)||0;
+        let s=0, tips=[];
+        if(rain>60 || total>95){ tips.push("厚云/降水偏高"); return {score:15, text:tips.join("，"), type:"难出霞"}; }
+        if(high>50 && total>35 && total<90){ s+=55; tips.push("高云较多，利于霞光"); }
+        else if(total>20 && total<70){ s+=40; tips.push("云量适中"); }
+        else if(total<=20){ s+=20; tips.push("天空较净，霞光弱"); }
+        s -= Math.max(0,(rain-20))*0.6;
+        if(low>50){ s-=15; tips.push("低云偏多可能遮日"); }
+        if(wind>=2 && wind<=6){ s+=5; tips.push("微风利于能见度"); }
+        let type = s>75?"有望火烧云":(s>55?"可能晚霞/朝霞":"一般/看天色");
+        s = Math.max(0, Math.min(100, Math.round(s)));
+        return {score:s, text:tips.join("，"), type};
+      }
+      const times=SunCalc.getTimes(new Date(dp.value+'T12:00:00'), lat, lon);
+      const m = scoreFor(times.sunrise.toISOString()), e = scoreFor(times.sunset.toISOString());
+      document.getElementById('scoreM').textContent = m.score; document.getElementById('scoreE').textContent = e.score;
+      document.getElementById('scoreMBar').style.left = m.score + '%';
+      document.getElementById('scoreEBar').style.left = e.score + '%';
+      document.getElementById('tipM').textContent = m.type + " · " + m.text;
+      document.getElementById('tipE').textContent = e.type + " · " + e.text;
+    }catch(e){
+      document.getElementById('dailyCards').innerHTML='<div class="small muted">天气加载失败</div>';
+      document.getElementById('hourStrip').innerHTML='';
+    }
+  }
+
+  async function loadInspiration(lat,lon){
+    const grid=document.getElementById('inspGrid'); if(!grid) return;
+    grid.innerHTML='加载中…';
+    const url = new URL('https://commons.wikimedia.org/w/api.php');
+    url.searchParams.set('action','query'); url.searchParams.set('generator','geosearch'); url.searchParams.set('ggscoord', `${lat}|${lon}`);
+    url.searchParams.set('ggsradius','1200'); url.searchParams.set('ggslimit','18'); url.searchParams.set('ggsnamespace','6'); url.searchParams.set('prop','imageinfo'); url.searchParams.set('iiprop','url'); url.searchParams.set('iiurlwidth','400'); url.searchParams.set('format','json'); url.searchParams.set('origin','*');
+    try{ const res=await fetch(url.toString()); const j=await res.json(); const pages = j.query && j.query.pages ? Object.values(j.query.pages) : []; grid.innerHTML=''; pages.forEach(p=>{ const ii=p.imageinfo && p.imageinfo[0]; if(!ii) return; const a=document.createElement('a'); a.href=ii.url; a.target='_blank'; a.rel='noreferrer'; a.innerHTML=`<img src="${ii.thumburl||ii.url}" alt="${p.title}"/>`; grid.appendChild(a); }); }catch(e){ grid.innerHTML='<div class="small muted">图库加载失败</div>'; }
+    const sl=document.getElementById('searchLinks'); const q=`${lat.toFixed(4)},${lon.toFixed(4)} 日落 摄影`; sl.innerHTML=`🔎 快捷外链：<a href="https://www.bing.com/images/search?q=${encodeURIComponent(q)}" target="_blank">Bing 图片</a> · <a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}" target="_blank">Google 图片</a>`;
+  }
+
+  document.getElementById('anglesList').innerHTML='已启用：日/月 + 行动轨迹 + 主体高度驱动仰角。点击地图或搜索后开始。';
+}
+</script>
+</body>
+</html>
